@@ -1468,108 +1468,20 @@ angular.module('textAngular.taBind', ['textAngular.factories', 'textAngular.DOM'
 						if(text && text.trim().length){
 							// test paste from word/microsoft product
 							if(text.match(/class=["']*Mso(Normal|List)/i) || text.match(/content=["']*Word.Document/i) || text.match(/content=["']*OneNote.File/i)){
-								var textFragment = text.match(/<!--StartFragment-->([\s\S]*?)<!--EndFragment-->/i);
-								if(!textFragment) textFragment = text;
-								else textFragment = textFragment[1];
-								textFragment = textFragment.replace(/<o:p>[\s\S]*?<\/o:p>/ig, '').replace(/class=(["']|)MsoNormal(["']|)/ig, '');
-								var dom = angular.element("<div>" + textFragment + "</div>");
-								var targetDom = angular.element("<div></div>");
-								var _list = {
-									element: null,
-									lastIndent: [],
-									lastLi: null,
-									isUl: false
-								};
-								_list.lastIndent.peek = function(){
-									var n = this.length;
-									if (n>0) return this[n-1];
-								};
-								var _resetList = function(isUl){
-									_list.isUl = isUl;
-									_list.element = angular.element(isUl ? "<ul>" : "<ol>");
-									_list.lastIndent = [];
-									_list.lastIndent.peek = function(){
-										var n = this.length;
-										if (n>0) return this[n-1];
-									};
-									_list.lastLevelMatch = null;
-								};
-								for(var i = 0; i <= dom[0].childNodes.length; i++){
-									if(!dom[0].childNodes[i] || dom[0].childNodes[i].nodeName === "#text"){
-										continue;
-									} else {
-										var tagName = dom[0].childNodes[i].tagName.toLowerCase();
-										if(tagName !== "p" && tagName !== "h1" && tagName !== "h2" && tagName !== "h3" && tagName !== "h4" && tagName !== "h5" && tagName !== "h6"){
-											continue;
-										}
-									}
-									var el = angular.element(dom[0].childNodes[i]);
-									var _listMatch = (el.attr('class') || '').match(/MsoList(Bullet|Number|Paragraph)(CxSp(First|Middle|Last)|)/i);
+								var tmp = document.createElement("DIV");
+								tmp.innerHTML = text.replace(/<style>[\s\S]*?<\/style>/,"");
+								var newString = tmp.textContent||tmp.innerText;
+								// this next piece converts line breaks into break tags
+								// and removes the seemingly endless crap code
+								newString  = newString.replace(/\n\n/g, "<br />").replace(/.*<!--.*-->/g,"");
 
-									if(_listMatch){
-										if(el[0].childNodes.length < 2 || el[0].childNodes[1].childNodes.length < 1){
-											continue;
-										}
-										var isUl = _listMatch[1].toLowerCase() === "bullet" || (_listMatch[1].toLowerCase() !== "number" && !(/^[^0-9a-z<]*[0-9a-z]+[^0-9a-z<>]</i.test(el[0].childNodes[1].innerHTML) || /^[^0-9a-z<]*[0-9a-z]+[^0-9a-z<>]</i.test(el[0].childNodes[1].childNodes[0].innerHTML)));
-										var _indentMatch = (el.attr('style') || '').match(/margin-left:([\-\.0-9]*)/i);
-										var indent = parseFloat((_indentMatch)?_indentMatch[1]:0);
-										var _levelMatch = (el.attr('style') || '').match(/mso-list:l([0-9]+) level([0-9]+) lfo[0-9+]($|;)/i);
-										// prefers the mso-list syntax
-
-										if(_levelMatch && _levelMatch[2]) indent = parseInt(_levelMatch[2]);
-
-										if ((_levelMatch && (!_list.lastLevelMatch || _levelMatch[1] !== _list.lastLevelMatch[1])) || !_listMatch[3] || _listMatch[3].toLowerCase() === "first" || (_list.lastIndent.peek() === null) || (_list.isUl !== isUl && _list.lastIndent.peek() === indent)) {
-											_resetList(isUl);
-											targetDom.append(_list.element);
-										} else if (_list.lastIndent.peek() != null && _list.lastIndent.peek() < indent){
-											_list.element = angular.element(isUl ? "<ul>" : "<ol>");
-											_list.lastLi.append(_list.element);
-										} else if (_list.lastIndent.peek() != null && _list.lastIndent.peek() > indent){
-											while(_list.lastIndent.peek() != null && _list.lastIndent.peek() > indent){
-												if(_list.element.parent()[0].tagName.toLowerCase() === 'li'){
-													_list.element = _list.element.parent();
-													continue;
-												}else if(/[uo]l/i.test(_list.element.parent()[0].tagName.toLowerCase())){
-													_list.element = _list.element.parent();
-												}else{ // else it's it should be a sibling
-													break;
-												}
-												_list.lastIndent.pop();
-											}
-											_list.isUl = _list.element[0].tagName.toLowerCase() === "ul";
-											if (isUl !== _list.isUl) {
-												_resetList(isUl);
-												targetDom.append(_list.element);
-											}
-										}
-
-										_list.lastLevelMatch = _levelMatch;
-										if(indent !== _list.lastIndent.peek()) _list.lastIndent.push(indent);
-										_list.lastLi = angular.element("<li>");
-										_list.element.append(_list.lastLi);
-										_list.lastLi.html(el.html().replace(/<!(--|)\[if !supportLists\](--|)>[\s\S]*?<!(--|)\[endif\](--|)>/ig, ''));
-										el.remove();
-									}else{
-										_resetList(false);
-										targetDom.append(el);
+								// this next piece removes any break tags (up to 10) at beginning
+								for ( i=0; i<10; i++ ) {
+									if ( newString.substr(0,6)==="<br />" ) {
+										newString = newString.replace("<br />", "");
 									}
 								}
-								var _unwrapElement = function(node){
-									node = angular.element(node);
-									for(var _n = node[0].childNodes.length - 1; _n >= 0; _n--) node.after(node[0].childNodes[_n]);
-									node.remove();
-								};
-
-								angular.forEach(targetDom.find('span'), function(node){
-									node.removeAttribute('lang');
-									if(node.attributes.length <= 0) _unwrapElement(node);
-								});
-								angular.forEach(targetDom.find('font'), _unwrapElement);
-
-                                text = targetDom.html();
-                                if(_isOneNote){
-                                    text = targetDom.html() || dom.html();
-                                }
+								text = newString;
 							}else{
 								// remove unnecessary chrome insert
 								text = text.replace(/<(|\/)meta[^>]*?>/ig, '');
